@@ -5,28 +5,38 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { useSlopifyAppContext } from "@/components/slopify-app-context"
+import {
+  useSlopifyPlayback,
+  useSlopifySearch,
+} from "@/components/slopify-app-context"
 import { fetchTracks, type Track } from "@/lib/tracks"
 
+const MEDIA_EQUALIZER_BARS = Array.from({ length: 14 }, (_, index) => ({
+  id: index,
+  animationDelay: `${index * 0.05}s`,
+  height: `${18 + (index % 7) * 10}px`,
+}))
+const EMPTY_EQUALIZER_BARS = Array.from({ length: 16 }, (_, index) => ({
+  id: index,
+  animationDelay: `${index * 0.05}s`,
+  height: `${36 + (index % 8) * 18}px`,
+}))
+const SKELETON_ROWS = Array.from({ length: 6 }, (_, index) => index)
+
 export function HomePage() {
-  const { currentTime, currentTrack, isPlaying, search, setCurrentTrack, setQueue } =
-    useSlopifyAppContext()
+  const { currentTime, currentTrack, isPlaying, setCurrentTrack, setQueue } =
+    useSlopifyPlayback()
+  const { search } = useSlopifySearch()
   const deferredSearch = useDeferredValue(search)
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null)
   const previousCurrentTrackIdRef = useRef<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const shouldShowSelectedTrackVideo = Boolean(
-    selectedTrack &&
-      currentTrack?.id === selectedTrack.id &&
-      isPlaying &&
-      selectedTrack.videoStatus === "completed" &&
-      selectedTrack.videoUrl
-  )
 
   const { data: tracks = [], isLoading } = useQuery({
     queryKey: ["tracks"],
     queryFn: fetchTracks,
+    staleTime: 20_000,
     refetchInterval: (query) => {
       const items = (query.state.data as Track[] | undefined) ?? []
       const hasPendingVideo = items.some(
@@ -48,38 +58,36 @@ export function HomePage() {
     const previousCurrentTrackId = previousCurrentTrackIdRef.current
 
     if (
-      selectedTrack &&
+      selectedTrackId &&
       currentTrack &&
-      selectedTrack.id === previousCurrentTrackId &&
+      selectedTrackId === previousCurrentTrackId &&
       currentTrack.id !== previousCurrentTrackId
     ) {
-      setSelectedTrack(currentTrack)
+      setSelectedTrackId(currentTrack.id)
     }
 
     previousCurrentTrackIdRef.current = currentTrack?.id ?? null
-  }, [currentTrack, selectedTrack])
+  }, [currentTrack, selectedTrackId])
 
-  useEffect(() => {
-    if (!selectedTrack) {
-      return
+  const selectedTrack = useMemo(() => {
+    if (!selectedTrackId) {
+      return null
     }
 
-    const refreshedSelectedTrack =
-      tracks.find((track) => track.id === selectedTrack.id) ?? null
-
-    if (!refreshedSelectedTrack) {
-      setSelectedTrack(null)
-      return
+    if (currentTrack?.id === selectedTrackId) {
+      return currentTrack
     }
 
-    if (
-      refreshedSelectedTrack.videoStatus !== selectedTrack.videoStatus ||
-      refreshedSelectedTrack.videoUrl !== selectedTrack.videoUrl ||
-      refreshedSelectedTrack.coverUrl !== selectedTrack.coverUrl
-    ) {
-      setSelectedTrack(refreshedSelectedTrack)
-    }
-  }, [selectedTrack, tracks])
+    return tracks.find((track) => track.id === selectedTrackId) ?? null
+  }, [currentTrack, selectedTrackId, tracks])
+
+  const shouldShowSelectedTrackVideo = Boolean(
+    selectedTrack &&
+      currentTrack?.id === selectedTrack.id &&
+      isPlaying &&
+      selectedTrack.videoStatus === "completed" &&
+      selectedTrack.videoUrl
+  )
 
   useEffect(() => {
     const video = videoRef.current
@@ -135,7 +143,7 @@ export function HomePage() {
                     variant="ghost"
                     size="icon"
                     className="size-9 rounded-[4px]"
-                    onClick={() => setSelectedTrack(null)}
+                    onClick={() => setSelectedTrackId(null)}
                   >
                     <ArrowLeft className="size-4" />
                   </Button>
@@ -198,13 +206,13 @@ export function HomePage() {
                         playsInline
                       />
                       <div className="pointer-events-none absolute inset-x-5 bottom-5 flex h-24 items-end justify-center gap-1.5">
-                        {Array.from({ length: 18 }, (_, index) => (
+                        {MEDIA_EQUALIZER_BARS.map((bar) => (
                           <span
-                            key={index}
+                            key={bar.id}
                             className="equalizer-bar w-1.5 rounded-sm bg-acid/90 shadow-[0_0_16px_rgba(183,243,91,0.28)]"
                             style={{
-                              animationDelay: `${index * 0.05}s`,
-                              height: `${18 + (index % 7) * 10}px`,
+                              animationDelay: bar.animationDelay,
+                              height: bar.height,
                             }}
                           />
                         ))}
@@ -218,13 +226,13 @@ export function HomePage() {
                         className="size-full object-cover"
                       />
                       <div className="pointer-events-none absolute inset-x-5 bottom-5 flex h-24 items-end justify-center gap-1.5">
-                        {Array.from({ length: 18 }, (_, index) => (
+                        {MEDIA_EQUALIZER_BARS.map((bar) => (
                           <span
-                            key={index}
+                            key={bar.id}
                             className="equalizer-bar w-1.5 rounded-sm bg-acid/90 shadow-[0_0_16px_rgba(183,243,91,0.28)]"
                             style={{
-                              animationDelay: `${index * 0.05}s`,
-                              height: `${18 + (index % 7) * 10}px`,
+                              animationDelay: bar.animationDelay,
+                              height: bar.height,
                             }}
                           />
                         ))}
@@ -235,13 +243,13 @@ export function HomePage() {
                       className="relative flex h-48 items-end gap-2 sm:h-64"
                       aria-hidden="true"
                     >
-                      {Array.from({ length: 22 }, (_, index) => (
+                      {EMPTY_EQUALIZER_BARS.map((bar) => (
                         <span
-                          key={index}
+                          key={bar.id}
                           className="equalizer-bar w-2 rounded-sm bg-acid shadow-[0_0_16px_rgba(183,243,91,0.24)] sm:w-2.5"
                           style={{
-                            animationDelay: `${index * 0.05}s`,
-                            height: `${36 + (index % 8) * 18}px`,
+                            animationDelay: bar.animationDelay,
+                            height: bar.height,
                           }}
                         />
                       ))}
@@ -355,7 +363,7 @@ export function HomePage() {
 
           {isLoading ? (
             <div className="space-y-3">
-              {Array.from({ length: 6 }, (_, index) => (
+              {SKELETON_ROWS.map((index) => (
                 <div
                   key={index}
                   className="h-16 animate-pulse rounded-[3px] border border-border bg-muted/70"
@@ -387,7 +395,7 @@ export function HomePage() {
                         type="button"
                         onClick={() => {
                           setCurrentTrack(track)
-                          setSelectedTrack(track)
+                          setSelectedTrackId(track.id)
                         }}
                         className="flex min-w-0 items-center gap-4 text-left"
                       >
