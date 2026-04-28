@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ArrowLeft, Play } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -9,11 +9,20 @@ import { useSlopifyAppContext } from "@/components/slopify-app-context"
 import { fetchTracks, type Track } from "@/lib/tracks"
 
 export function HomePage() {
-  const { currentTrack, search, setCurrentTrack, setQueue } =
+  const { currentTime, currentTrack, isPlaying, search, setCurrentTrack, setQueue } =
     useSlopifyAppContext()
   const deferredSearch = useDeferredValue(search)
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
+  const previousCurrentTrackIdRef = useRef<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const shouldShowSelectedTrackVideo = Boolean(
+    selectedTrack &&
+      currentTrack?.id === selectedTrack.id &&
+      isPlaying &&
+      selectedTrack.videoStatus === "completed" &&
+      selectedTrack.videoUrl
+  )
 
   const { data: tracks = [], isLoading } = useQuery({
     queryKey: ["tracks"],
@@ -36,11 +45,18 @@ export function HomePage() {
   }, [setQueue, tracks])
 
   useEffect(() => {
-    if (!selectedTrack || !currentTrack || selectedTrack.id !== currentTrack.id) {
-      return
+    const previousCurrentTrackId = previousCurrentTrackIdRef.current
+
+    if (
+      selectedTrack &&
+      currentTrack &&
+      selectedTrack.id === previousCurrentTrackId &&
+      currentTrack.id !== previousCurrentTrackId
+    ) {
+      setSelectedTrack(currentTrack)
     }
 
-    setSelectedTrack(currentTrack)
+    previousCurrentTrackIdRef.current = currentTrack?.id ?? null
   }, [currentTrack, selectedTrack])
 
   useEffect(() => {
@@ -64,6 +80,28 @@ export function HomePage() {
       setSelectedTrack(refreshedSelectedTrack)
     }
   }, [selectedTrack, tracks])
+
+  useEffect(() => {
+    const video = videoRef.current
+
+    if (!video) {
+      return
+    }
+
+    if (!shouldShowSelectedTrackVideo) {
+      video.pause()
+      video.currentTime = 0
+      return
+    }
+
+    if (Math.abs(video.currentTime - currentTime) > 0.35) {
+      video.currentTime = currentTime
+    }
+
+    void video.play().catch(() => {
+      return
+    })
+  }, [currentTime, shouldShowSelectedTrackVideo])
 
   const visibleTracks = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLowerCase()
@@ -149,16 +187,14 @@ export function HomePage() {
                 <div className="relative flex flex-1 items-center justify-center overflow-hidden">
                   <div className="absolute inset-5 rounded-[4px] border border-acid/18 bg-[radial-gradient(circle_at_center,_rgba(183,243,91,0.12),_transparent_42%)] shadow-[inset_0_0_68px_rgba(183,243,91,0.08)]" />
                   <div className="absolute inset-x-8 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan/50 to-transparent" />
-                  {selectedTrack.videoStatus === "completed" &&
-                  selectedTrack.videoUrl ? (
+                  {shouldShowSelectedTrackVideo ? (
                     <div className="relative aspect-square w-full max-w-[320px] overflow-hidden rounded-[6px] border border-border bg-muted/30 shadow-[0_24px_80px_rgba(0,0,0,0.45),0_0_36px_rgba(183,243,91,0.14)]">
                       <video
+                        ref={videoRef}
                         src={selectedTrack.videoUrl}
                         poster={selectedTrack.coverUrl || undefined}
                         className="size-full object-cover"
-                        autoPlay
                         muted
-                        loop
                         playsInline
                       />
                       <div className="pointer-events-none absolute inset-x-5 bottom-5 flex h-24 items-end justify-center gap-1.5">
